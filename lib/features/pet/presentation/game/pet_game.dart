@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/scheduler.dart';
 
+import '../../../../core/flame/outside_build.dart';
 import '../../domain/pet.dart';
 import 'components/background_component.dart';
 import 'components/catch_minigame.dart';
@@ -20,10 +20,10 @@ class PetGame extends FlameGame with HasCollisionDetection {
     required VoidCallback onPetTapped,
     required VoidCallback onStarCaught,
     required ValueChanged<int> onMinigameFinished,
-  }) : onPetTapped = (() => _outsideBuild(onPetTapped)),
-       onStarCaught = (() => _outsideBuild(onStarCaught)),
+  }) : onPetTapped = (() => runOutsideBuild(onPetTapped)),
+       onStarCaught = (() => runOutsideBuild(onStarCaught)),
        onMinigameFinished = ((score) =>
-           _outsideBuild(() => onMinigameFinished(score)));
+           runOutsideBuild(() => onMinigameFinished(score)));
 
   final VoidCallback onPetTapped;
   final VoidCallback onStarCaught;
@@ -34,23 +34,10 @@ class PetGame extends FlameGame with HasCollisionDetection {
   final _minigame = ValueNotifier<MinigameState>(MinigameState.idle);
 
   void publishMinigame(MinigameState state) =>
-      _outsideBuild(() => _minigame.value = state);
+      runOutsideBuild(() => _minigame.value = state);
 
   /// Releases resources owned by the widget layer's lifetime.
   void disposeNotifiers() => _minigame.dispose();
-
-  /// Every signal leaving the game goes through here. GameWidget may run
-  /// `update()` while Flutter is building (e.g. on window resize), and
-  /// notifying widgets/providers in that phase throws "setState() called
-  /// during build". In that case the signal is deferred to the end of frame.
-  static void _outsideBuild(VoidCallback fn) {
-    final scheduler = SchedulerBinding.instance;
-    if (scheduler.schedulerPhase == SchedulerPhase.persistentCallbacks) {
-      scheduler.addPostFrameCallback((_) => fn());
-    } else {
-      fn();
-    }
-  }
 
   late final BackgroundComponent background;
   late final PetComponent petComponent;

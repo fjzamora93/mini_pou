@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../defense/presentation/defense_screen.dart';
 import '../application/pet_controller.dart';
 import '../domain/pet.dart';
 import 'game/minigame_state.dart';
@@ -118,6 +119,8 @@ class _Hud extends StatelessWidget {
               onToggleSleep: controller.toggleSleep,
               onPlay: game.startMinigame,
               onClean: controller.clean,
+              onDefend: () =>
+                  Navigator.of(context).push(DefenseScreen.route(pet.species)),
             ),
         ],
       ),

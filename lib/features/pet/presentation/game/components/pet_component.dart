@@ -45,10 +45,10 @@ class PetComponent extends PositionComponent
   Vector2? lookTarget;
 
   void layout({required Vector2 screen, required double groundY}) {
-    // Integer multiple of the 16px frame keeps pixel art crisp.
+    // Integer multiple of the frame keeps pixel art crisp (no uneven texels).
     final raw = math.min(screen.x * 0.45, screen.y * 0.32);
-    final pixel = math.max(4, (raw / BirdSheet.frameSize).floor());
-    final side = pixel * BirdSheet.frameSize;
+    final scale = math.max(2, (raw / BirdSheet.frameSize).round());
+    final side = scale * BirdSheet.frameSize;
     size.setValues(side, side);
     _homeX = screen.x / 2;
     _minX = side / 2;
@@ -96,15 +96,34 @@ class PetComponent extends PositionComponent
   final _layerPaint = Paint();
   final _dirtPaint = Paint()..blendMode = BlendMode.srcATop;
 
-  // Fixed dirt spot positions (relative to size) for stable visuals.
-  static const _dirtSpots = [
-    Offset(0.45, 0.55),
-    Offset(0.62, 0.70),
-    Offset(0.35, 0.40),
-    Offset(0.70, 0.50),
-    Offset(0.52, 0.80),
-    Offset(0.40, 0.66),
+  // Mud splats in texel coordinates of the 64px frame, placed over the
+  // body/wing/head of the standing pose. Drawn on the sprite's own pixel grid
+  // so dirt reads as part of the pixel art.
+  static const _dirtSplats = [
+    (28, 40),
+    (36, 37),
+    (22, 31),
+    (32, 45),
+    (41, 47),
+    (24, 44),
+    (17, 27),
+    (45, 53),
   ];
+
+  // Texel offsets of one splat: irregular blob plus a darker core.
+  static const _splatShape = [
+    (1, 0),
+    (2, 0),
+    (0, 1),
+    (1, 1),
+    (2, 1),
+    (3, 1),
+    (1, 2),
+    (2, 2),
+    (3, 2),
+  ];
+  static const _splatCore = [(1, 1), (2, 1), (2, 2)];
+  final _dirtCorePaint = Paint()..blendMode = BlendMode.srcATop;
 
   @override
   Future<void> onLoad() async {
@@ -117,14 +136,15 @@ class PetComponent extends PositionComponent
 
   void _loadSpecies(PetSpecies species) {
     final image = game.images.fromCache(species.flameImage);
+    final frame = image.width / BirdSheet.columns;
     SpriteAnimation row(int row, double stepTime, {bool loop = true}) =>
         SpriteAnimation.fromFrameData(
           image,
           SpriteAnimationData.sequenced(
             amount: BirdSheet.columns,
             stepTime: stepTime,
-            textureSize: Vector2.all(BirdSheet.frameSize),
-            texturePosition: Vector2(0, row * BirdSheet.frameSize),
+            textureSize: Vector2.all(frame),
+            texturePosition: Vector2(0, row * frame),
             loop: loop,
           ),
         );
@@ -299,17 +319,25 @@ class PetComponent extends PositionComponent
   }
 
   void _renderDirt(Canvas canvas, double w, double h, double dirtiness) {
-    final count = (dirtiness * _dirtSpots.length).ceil();
-    _dirtPaint.color = const Color(
-      0xFF7A5230,
-    ).withValues(alpha: 0.4 + dirtiness * 0.4);
+    final count = (dirtiness * _dirtSplats.length).ceil();
+    final texel = w / BirdSheet.frameSize;
+    final alpha = 0.55 + dirtiness * 0.4;
+    _dirtPaint.color = const Color(0xFF8A5E34).withValues(alpha: alpha);
+    _dirtCorePaint.color = const Color(0xFF5A3A1E).withValues(alpha: alpha);
     for (var i = 0; i < count; i++) {
-      final s = _dirtSpots[i];
-      canvas.drawCircle(
-        Offset(s.dx * w, s.dy * h),
-        w * (0.05 + i % 3 * 0.02),
-        _dirtPaint,
-      );
+      final (sx, sy) = _dirtSplats[i];
+      for (final (dx, dy) in _splatShape) {
+        canvas.drawRect(
+          Rect.fromLTWH((sx + dx) * texel, (sy + dy) * texel, texel, texel),
+          _dirtPaint,
+        );
+      }
+      for (final (dx, dy) in _splatCore) {
+        canvas.drawRect(
+          Rect.fromLTWH((sx + dx) * texel, (sy + dy) * texel, texel, texel),
+          _dirtCorePaint,
+        );
+      }
     }
   }
 

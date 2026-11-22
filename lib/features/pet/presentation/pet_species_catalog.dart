@@ -1,8 +1,12 @@
+import 'dart:ui' show Color;
+
 import '../domain/pet_species.dart';
 
-/// Layout shared by every bird spritesheet: a 4x4 grid of 16x16 frames.
+/// Layout shared by every bird spritesheet: a 4x4 grid of 64x64 frames.
 abstract final class BirdSheet {
-  static const frameSize = 16.0;
+  /// Side of one frame in texels. On-screen sizes are integer multiples of
+  /// it so every art pixel covers the same number of screen pixels.
+  static const frameSize = 64.0;
   static const columns = 4;
 
   /// Row index of each animation in the sheet.
@@ -46,8 +50,26 @@ extension PetSpeciesCatalog on PetSpecies {
   };
 
   /// Key for Flame's image cache (relative to `assets/images/`).
-  String get flameImage => 'pets/$_fileName.png';
+  /// Every species now uses its redrawn 64px-frame sheet in `pets_final/`
+  /// (regenerate with `python3 tool/bird_sprites.py`).
+  String get flameImage => 'pets_final/$_fileName.png';
 
   /// Full path for Flutter's `Image.asset`.
   String get assetPath => 'assets/images/$flameImage';
+
+  /// Signature colour of the bird (e.g. its projectiles in defense mode).
+  Color get color => switch (this) {
+    PetSpecies.cardinal => const Color(0xFFD42A12),
+    PetSpecies.blueJay => const Color(0xFF3F7FE0),
+    PetSpecies.cedarWaxwing => const Color(0xFFF2D25A),
+    PetSpecies.chickadee => const Color(0xFFF4F2EC),
+    PetSpecies.crow => const Color(0xFF3E4256),
+    PetSpecies.houseFinch => const Color(0xFFD84A48),
+    PetSpecies.hummingbird => const Color(0xFF3A9A1E),
+    PetSpecies.magpie => const Color(0xFF1C58B0),
+    PetSpecies.redRobin => const Color(0xFFD4542A),
+    PetSpecies.stellersJay => const Color(0xFF1E4FA0),
+    PetSpecies.whiteDove => const Color(0xFFECEEF2),
+    PetSpecies.woodThrush => const Color(0xFFC47A3A),
+  };
 }

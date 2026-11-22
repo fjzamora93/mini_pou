@@ -11,6 +11,7 @@ class ActionBar extends StatelessWidget {
     required this.onToggleSleep,
     required this.onPlay,
     required this.onClean,
+    required this.onDefend,
   });
 
   final Pet pet;
@@ -18,6 +19,7 @@ class ActionBar extends StatelessWidget {
   final VoidCallback onToggleSleep;
   final VoidCallback onPlay;
   final VoidCallback onClean;
+  final VoidCallback onDefend;
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +47,11 @@ class ActionBar extends StatelessWidget {
             icon: Icons.shower,
             label: 'Limpiar',
             onPressed: PetRules.canClean(pet) ? onClean : null,
+          ),
+          _ActionButton(
+            icon: Icons.shield,
+            label: 'Defender',
+            onPressed: onDefend,
           ),
         ],
       ),
