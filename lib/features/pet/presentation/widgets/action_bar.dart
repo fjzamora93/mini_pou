@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/pet.dart';
-import '../../domain/pet_rules.dart';
+import '../../../../shared_features/pet_status/domain/entities/pet_entity.dart';
+import '../../../../shared_features/pet_status/domain/pet_status_rules.dart';
 
 class ActionBar extends StatelessWidget {
   const ActionBar({
@@ -9,15 +9,13 @@ class ActionBar extends StatelessWidget {
     required this.pet,
     required this.onFeed,
     required this.onToggleSleep,
-    required this.onPlay,
     required this.onClean,
     required this.onDefend,
   });
 
-  final Pet pet;
+  final PetEntity pet;
   final VoidCallback onFeed;
   final VoidCallback onToggleSleep;
-  final VoidCallback onPlay;
   final VoidCallback onClean;
   final VoidCallback onDefend;
 
@@ -31,22 +29,17 @@ class ActionBar extends StatelessWidget {
             icon: Icons.restaurant,
             label: 'Alimentar',
             // Rules decide availability; the UI just reflects them.
-            onPressed: PetRules.canFeed(pet) ? onFeed : null,
+            onPressed: PetStatusRules.canFeed(pet.status) ? onFeed : null,
           ),
           _ActionButton(
-            icon: pet.isSleeping ? Icons.wb_sunny : Icons.bedtime,
-            label: pet.isSleeping ? 'Despertar' : 'Dormir',
+            icon: pet.status.isSleeping ? Icons.wb_sunny : Icons.bedtime,
+            label: pet.status.isSleeping ? 'Despertar' : 'Dormir',
             onPressed: onToggleSleep,
-          ),
-          _ActionButton(
-            icon: Icons.sports_esports,
-            label: 'Jugar',
-            onPressed: PetRules.canPlay(pet) ? onPlay : null,
           ),
           _ActionButton(
             icon: Icons.shower,
             label: 'Limpiar',
-            onPressed: PetRules.canClean(pet) ? onClean : null,
+            onPressed: PetStatusRules.canClean(pet.status) ? onClean : null,
           ),
           _ActionButton(
             icon: Icons.shield,

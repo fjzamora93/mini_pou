@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/pet_balance.dart';
+import '../../../../shared_features/pet_status/domain/pet_status_balance.dart';
 
 class StatBar extends StatelessWidget {
   const StatBar({
@@ -16,7 +16,7 @@ class StatBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = (value / PetBalance.maxStat).clamp(0.0, 1.0);
+    final t = (value / PetStatusBalance.maxStat).clamp(0.0, 1.0);
     final color = Color.lerp(
       const Color(0xFFE5484D),
       const Color(0xFF46A758),

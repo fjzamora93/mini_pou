@@ -3,15 +3,15 @@ import 'dart:ui';
 
 import 'package:flame/components.dart';
 
-import '../../../domain/defense_map.dart';
 import '../../../domain/defense_rules.dart';
+import '../../../domain/entities/defense_map_entity.dart';
 
 /// Pulsing tint over every spot where the pet may stand. Shown only while
 /// the player is choosing where to place it.
 class PlacementOverlay extends Component {
   PlacementOverlay({required this.map}) : super(priority: 50000);
 
-  final DefenseMap map;
+  final DefenseMapEntity map;
   late final Path _path;
   double _time = 0;
 

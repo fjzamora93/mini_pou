@@ -2,33 +2,111 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flame/components.dart';
+import 'package:flame/sprite.dart' show SpriteAnimationTicker;
+import 'package:flutter/painting.dart' show FontWeight, Shadow, TextStyle;
 
-import '../../../domain/defense_map.dart';
+import '../../../../../shared_features/pet_skills/domain/entities/skill_effect_entity.dart';
+import '../../../../../shared_features/pet_skills/domain/pet_traits.dart';
+import '../../../domain/combat_rules.dart';
+import '../../../domain/defense_rules.dart';
+import '../../../domain/entities/defense_map_entity.dart';
+import '../../../domain/entities/enemy_entity.dart';
+import '../../../domain/route_path.dart';
 import '../defense_game.dart';
+import 'skill_sheet.dart';
 
-/// Placeholder enemy: a slime that crawls along a route. Its speed is read
+/// Layout of `enemies/slime.png`: 32x32 frames, facing left.
+abstract final class SlimeSheet {
+  static const image = 'enemies/slime.png';
+  static const frame = 32.0;
+  static const moveRow = 0;
+  static const moveFrames = 8;
+  static const deathRow = 1;
+  static const deathFrames = 6;
+
+  /// Ground line inside the frame (where the slime touches the floor).
+  static const groundY = 29.0;
+
+  /// On-map size: 2x the frame keeps the pixel art crisp.
+  static const scale = 2.0;
+  static const size = frame * scale;
+
+  static SpriteAnimation animation(
+    Image image, {
+    required int row,
+    required int amount,
+    required double stepTime,
+    bool loop = true,
+  }) => SpriteAnimation.fromFrameData(
+    image,
+    SpriteAnimationData.sequenced(
+      amount: amount,
+      stepTime: stepTime,
+      textureSize: Vector2.all(frame),
+      texturePosition: Vector2(0, row * frame),
+      loop: loop,
+    ),
+  );
+}
+
+/// A slime crawling along a route. Game state lives in its [EnemyEntity] (level
+/// and HP); this component moves, animates and draws it. Its speed is read
 /// from the game every frame, so speed-ups apply to enemies already walking.
 class EnemyComponent extends PositionComponent
     with HasGameReference<DefenseGame> {
-  EnemyComponent({required this.route, required int hp})
-    : _hp = hp,
-      _maxHp = hp,
-      super(anchor: Anchor.center, size: Vector2.all(radius * 2));
+  EnemyComponent({required this.route, required EnemyEntity enemy})
+    : _enemy = enemy,
+      super(
+        // Position = the slime's feet on the path line.
+        anchor: const Anchor(0.5, SlimeSheet.groundY / SlimeSheet.frame),
+        size: Vector2.all(SlimeSheet.size),
+      );
 
+  /// Rough body radius in map px (hit tests, projectile impact).
   static const radius = 22.0;
 
   final RoutePath route;
-  final int _maxHp;
-  int _hp;
+  EnemyEntity _enemy;
   double _travelled = 0;
-  double _time = math.Random().nextDouble() * 10;
   double _flash = 0;
   bool _facingRight = false;
+  double _gust = 0; // seconds left of the knockback overlay
+  late final SpriteAnimationTicker _move;
+  late final SpriteAnimationTicker _burning;
+  late final SpriteAnimationTicker _wet;
+  late final SpriteAnimationTicker _blown;
 
-  bool get alive => _hp > 0 && !isRemoving && isMounted;
+  EnemyEntity get enemy => _enemy;
+  bool get alive => !_enemy.isDefeated && !isRemoving && isMounted;
 
-  /// How far along its route it is; the pet targets the most advanced one.
+  /// How far along its route it is; pets target the most advanced one.
   double get progress => _travelled / route.length;
+
+  /// Middle of the body in world coordinates (what projectiles aim at).
+  Vector2 get bodyCenter => position - Vector2(0, radius * 0.75);
+
+  static int _spawned = 0;
+
+  @override
+  Future<void> onLoad() async {
+    _move = SlimeSheet.animation(
+      game.images.fromCache(SlimeSheet.image),
+      row: SlimeSheet.moveRow,
+      amount: SlimeSheet.moveFrames,
+      stepTime: 0.1,
+    ).createTicker();
+    // Desync neighbours so a queue of slimes doesn't hop in lockstep.
+    _move.currentIndex = (_spawned++ * 3) % SlimeSheet.moveFrames;
+    SpriteAnimationTicker overlay(PetElement e, double step) =>
+        SkillSheet.animation(
+          game.images.fromCache(SkillSheet.image(e)),
+          row: SkillSheet.statusRow,
+          stepTime: step,
+        ).createTicker();
+    _burning = overlay(PetElement.fire, 0.1);
+    _wet = overlay(PetElement.water, 0.15);
+    _blown = overlay(PetElement.air, 0.08);
+  }
 
   @override
   void onMount() {
@@ -39,10 +117,24 @@ class EnemyComponent extends PositionComponent
   @override
   void update(double dt) {
     super.update(dt);
-    _time += dt;
-    _flash = math.max(0, _flash - dt);
+    if (_flash > 0) _flash -= dt;
+    if (_gust > 0) _gust -= dt;
     if (!game.running) return;
-    _travelled += game.enemySpeed * dt;
+
+    // Burns tick and slows wear off; a burn can finish it.
+    _enemy = _enemy.tick(dt);
+    if (_enemy.isDefeated) {
+      _die();
+      return;
+    }
+    if (_enemy.isBurning) _burning.update(dt);
+    if (_enemy.isSlowed) _wet.update(dt);
+    if (_gust > 0) _blown.update(dt);
+
+    final speed = game.enemySpeed * _enemy.speedFactor;
+    // Animation pace follows the walking speed.
+    _move.update(dt * speed / DefenseBalance.baseEnemySpeed);
+    _travelled += speed * dt;
     if (_travelled >= route.length) {
       removeFromParent();
       game.onEnemyEscaped();
@@ -57,74 +149,138 @@ class EnemyComponent extends PositionComponent
     position.setValues(p.x, p.y);
   }
 
-  void hit(int damage) {
+  /// A pet's shot landed: its skill [effect] decides what happens.
+  void takeHit({
+    required double damage,
+    required SkillEffectEntity effect,
+    required String byPetId,
+  }) {
     if (!alive) return;
-    _hp -= damage;
+    final outcome = CombatRules.applyHit(
+      _enemy,
+      damage: damage,
+      effect: effect,
+      petId: byPetId,
+    );
+    _enemy = outcome.enemy;
     _flash = 0.12;
-    if (_hp <= 0) {
-      removeFromParent();
-      game.onEnemyKilled();
+    if (outcome.knockback > 0) {
+      _travelled = math.max(0, _travelled - outcome.knockback);
+      _moveTo(route.positionAt(_travelled));
+      _gust = 0.35;
     }
+    if (_enemy.isDefeated) _die();
   }
 
-  static final _body = Paint()..color = const Color(0xFF8E4FC8);
-  static final _bodyLight = Paint()..color = const Color(0xFFB57CE6);
-  static final _flashPaint = Paint()..color = const Color(0xFFFFFFFF);
-  static final _outline = Paint()
-    ..color = const Color(0xFF2A123F)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 3;
-  static final _white = Paint()..color = const Color(0xFFFFFFFF);
-  static final _black = Paint()..color = const Color(0xFF14081F);
+  void _die() {
+    parent?.add(SlimeDeath(position: position.clone(), mirrored: _facingRight));
+    removeFromParent();
+    final killer = _enemy.lastHitBy;
+    if (killer != null) game.onEnemyKilled(killer);
+  }
+
+  // --- Rendering ---------------------------------------------------------------
+
+  static final _sprite = Paint()..filterQuality = FilterQuality.none;
+  static final _flashPaint = Paint()
+    ..filterQuality = FilterQuality.none
+    ..colorFilter = const ColorFilter.mode(
+      Color(0xFFFFFFFF),
+      BlendMode.srcATop,
+    );
   static final _shadow = Paint()..color = const Color(0x40000000);
   static final _barBg = Paint()..color = const Color(0xAA000000);
   static final _barFg = Paint()..color = const Color(0xFF6CE07A);
+  static final _levelText = TextPaint(
+    style: const TextStyle(
+      color: Color(0xFFFFFFFF),
+      fontSize: 13,
+      fontWeight: FontWeight.w800,
+      shadows: [Shadow(color: Color(0xFF000000), offset: Offset(1, 1))],
+    ),
+  );
 
   @override
   void render(Canvas canvas) {
-    const r = radius;
-    final c = Offset(r, r);
-    final wobble = math.sin(_time * 8) * 0.08;
+    final w = size.x;
+    const ground = SlimeSheet.groundY * SlimeSheet.scale;
     canvas.drawOval(
       Rect.fromCenter(
-        center: c + const Offset(0, r * 0.8),
-        width: r * 1.8,
-        height: r * 0.5,
+        center: Offset(w / 2, ground),
+        width: w * 0.62,
+        height: 10,
       ),
       _shadow,
     );
-    final body = Rect.fromCenter(
-      center: c + Offset(0, r * wobble),
-      width: r * 2 * (1 + wobble),
-      height: r * 1.7 * (1 - wobble),
+
+    canvas.save();
+    if (_facingRight) {
+      canvas.translate(w, 0);
+      canvas.scale(-1, 1);
+    }
+    _move.getSprite().render(
+      canvas,
+      size: size,
+      overridePaint: _flash > 0 ? _flashPaint : _sprite,
     );
-    canvas.drawOval(body, _flash > 0 ? _flashPaint : _body);
-    canvas.drawOval(
+    // Effect overlays share the slime's 32px frame, so they line up.
+    if (_enemy.isSlowed) {
+      _wet.getSprite().render(canvas, size: size, overridePaint: _sprite);
+    }
+    if (_enemy.isBurning) {
+      _burning.getSprite().render(canvas, size: size, overridePaint: _sprite);
+    }
+    if (_gust > 0) {
+      _blown.getSprite().render(canvas, size: size, overridePaint: _sprite);
+    }
+    canvas.restore();
+
+    // Level + health bar above the head.
+    const barW = 40.0;
+    final bar = Rect.fromLTWH((w - barW) / 2, 6, barW, 6);
+    canvas.drawRect(bar, _barBg);
+    canvas.drawRect(
       Rect.fromLTWH(
-        body.left + r * 0.35,
-        body.top + r * 0.2,
-        r * 0.7,
-        r * 0.45,
+        bar.left + 1,
+        bar.top + 1,
+        (barW - 2) * _enemy.healthFraction,
+        4,
       ),
-      _bodyLight,
+      _barFg,
     );
-    canvas.drawOval(body, _outline);
+    _levelText.render(
+      canvas,
+      'Nv.${_enemy.level}',
+      Vector2(w / 2, bar.top - 1),
+      anchor: Anchor.bottomCenter,
+    );
+  }
+}
 
-    final dir = _facingRight ? 1.0 : -1.0;
-    for (final ex in [-0.3, 0.3]) {
-      final e = c + Offset(r * (ex + dir * 0.25), -r * 0.15);
-      canvas.drawCircle(e, r * 0.22, _white);
-      canvas.drawCircle(e + Offset(dir * r * 0.08, 0), r * 0.11, _black);
-    }
-
-    if (_hp < _maxHp) {
-      final w = r * 1.8;
-      final bar = Rect.fromLTWH(r - w / 2, -10, w, 6);
-      canvas.drawRect(bar, _barBg);
-      canvas.drawRect(
-        Rect.fromLTWH(bar.left + 1, bar.top + 1, (w - 2) * _hp / _maxHp, 4),
-        _barFg,
+/// One-shot splat left behind by a defeated slime.
+class SlimeDeath extends SpriteAnimationComponent
+    with HasGameReference<DefenseGame> {
+  SlimeDeath({required Vector2 position, required this.mirrored})
+    : super(
+        position: position,
+        anchor: const Anchor(0.5, SlimeSheet.groundY / SlimeSheet.frame),
+        size: Vector2.all(SlimeSheet.size),
+        removeOnFinish: true,
+        paint: Paint()..filterQuality = FilterQuality.none,
       );
-    }
+
+  final bool mirrored;
+
+  @override
+  Future<void> onLoad() async {
+    animation = SlimeSheet.animation(
+      game.images.fromCache(SlimeSheet.image),
+      row: SlimeSheet.deathRow,
+      amount: SlimeSheet.deathFrames,
+      stepTime: 0.07,
+      loop: false,
+    );
+    if (mirrored) flipHorizontallyAroundCenter();
+    priority = position.y.round();
   }
 }

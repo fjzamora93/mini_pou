@@ -1,24 +1,30 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/pet_species.dart';
-import '../pet_species_catalog.dart';
+import '../../../../shared_features/pet_species/domain/pet_species.dart';
+import '../../../../shared_features/pet_species/presentation/pet_species_catalog.dart';
+import '../../../../shared_features/pet_species/presentation/widgets/bird_frame.dart';
+import '../../../../shared_features/pet_status/domain/entities/pet_entity.dart';
+import '../../../../shared_features/pet_status/domain/entities/pet_roster_entity.dart';
 
 /// Opens the species menu; resolves to the picked species, or `null` if the
-/// sheet was dismissed.
+/// sheet was dismissed. Raised species show their pet's name and level;
+/// the rest are marked as new (picking one adopts a new pet at level 0).
 Future<PetSpecies?> showSpeciesPicker(
   BuildContext context, {
-  required PetSpecies current,
+  required PetRosterEntity roster,
+  String title = 'Elige tu mascota',
 }) => showModalBottomSheet<PetSpecies>(
   context: context,
   showDragHandle: true,
   isScrollControlled: true,
-  builder: (context) => _SpeciesPicker(current: current),
+  builder: (context) => _SpeciesPicker(roster: roster, title: title),
 );
 
 class _SpeciesPicker extends StatelessWidget {
-  const _SpeciesPicker({required this.current});
+  const _SpeciesPicker({required this.roster, required this.title});
 
-  final PetSpecies current;
+  final PetRosterEntity roster;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +36,7 @@ class _SpeciesPicker extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Elige tu mascota', style: theme.textTheme.titleLarge),
+            Text(title, style: theme.textTheme.titleLarge),
             const SizedBox(height: 12),
             Flexible(
               child: GridView.extent(
@@ -38,12 +44,13 @@ class _SpeciesPicker extends StatelessWidget {
                 maxCrossAxisExtent: 120,
                 mainAxisSpacing: 8,
                 crossAxisSpacing: 8,
-                childAspectRatio: 0.85,
+                childAspectRatio: 0.75,
                 children: [
                   for (final species in PetSpecies.values)
                     _SpeciesTile(
                       species: species,
-                      selected: species == current,
+                      pet: roster.bySpecies(species),
+                      selected: roster.active?.species == species,
                       onTap: () => Navigator.of(context).pop(species),
                     ),
                 ],
@@ -59,11 +66,15 @@ class _SpeciesPicker extends StatelessWidget {
 class _SpeciesTile extends StatelessWidget {
   const _SpeciesTile({
     required this.species,
+    required this.pet,
     required this.selected,
     required this.onTap,
   });
 
   final PetSpecies species;
+
+  /// The raised pet of this species, if any.
+  final PetEntity? pet;
   final bool selected;
   final VoidCallback onTap;
 
@@ -92,55 +103,20 @@ class _SpeciesTile extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                species.label,
+                pet?.name ?? species.label,
                 textAlign: TextAlign.center,
-                maxLines: 2,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelMedium,
               ),
+              Text(
+                pet == null ? 'Nueva' : 'Nv. ${pet!.skills.level}',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: pet == null ? scheme.outline : scheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One crisp, upscaled frame of a bird spritesheet (idle pose by default).
-class BirdFrame extends StatelessWidget {
-  const BirdFrame({
-    super.key,
-    required this.species,
-    required this.size,
-    this.row = BirdSheet.idleRow,
-    this.column = 0,
-  });
-
-  final PetSpecies species;
-  final double size;
-  final int row;
-  final int column;
-
-  @override
-  Widget build(BuildContext context) {
-    const n = BirdSheet.columns;
-    // Alignment maps -1..1 across the overflow, so cell i sits at -1 + 2i/(n-1).
-    final alignment = Alignment(
-      -1 + 2 * column / (n - 1),
-      -1 + 2 * row / (n - 1),
-    );
-    return SizedBox.square(
-      dimension: size,
-      child: ClipRect(
-        child: OverflowBox(
-          maxWidth: size * n,
-          maxHeight: size * n,
-          alignment: alignment,
-          child: Image.asset(
-            species.assetPath,
-            width: size * n,
-            height: size * n,
-            fit: BoxFit.fill,
-            filterQuality: FilterQuality.none,
           ),
         ),
       ),

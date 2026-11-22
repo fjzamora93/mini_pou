@@ -1,7 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mini_pou/features/defense/domain/defense_map.dart';
 import 'package:mini_pou/features/defense/domain/defense_rules.dart';
+import 'package:mini_pou/features/defense/domain/entities/defense_map_entity.dart';
 import 'package:mini_pou/features/defense/domain/maps/jungle_camp.dart';
+import 'package:mini_pou/features/defense/domain/route_path.dart';
 
 void main() {
   group('DefenseRules', () {

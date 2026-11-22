@@ -5,7 +5,8 @@ import 'package:flutter/foundation.dart';
 @immutable
 class DefenseHudState {
   const DefenseHudState({
-    this.petPlaced = false,
+    this.placedIds = const {},
+    this.selectedId,
     this.seconds = 0,
     this.speedMultiplier = 1,
     this.kills = 0,
@@ -13,17 +14,24 @@ class DefenseHudState {
     this.gameOver = false,
   });
 
-  final bool petPlaced;
+  /// Pets already on the map (each raised pet can be placed once).
+  final Set<String> placedIds;
+
+  /// PetEntity the next tap on the map places; `null` when all are placed.
+  final String? selectedId;
   final int seconds;
   final double speedMultiplier;
   final int kills;
   final int lives;
   final bool gameOver;
 
+  bool get anyPlaced => placedIds.isNotEmpty;
+
   @override
   bool operator ==(Object other) =>
       other is DefenseHudState &&
-      other.petPlaced == petPlaced &&
+      setEquals(other.placedIds, placedIds) &&
+      other.selectedId == selectedId &&
       other.seconds == seconds &&
       other.speedMultiplier == speedMultiplier &&
       other.kills == kills &&
@@ -31,6 +39,13 @@ class DefenseHudState {
       other.gameOver == gameOver;
 
   @override
-  int get hashCode =>
-      Object.hash(petPlaced, seconds, speedMultiplier, kills, lives, gameOver);
+  int get hashCode => Object.hash(
+    Object.hashAllUnordered(placedIds),
+    selectedId,
+    seconds,
+    speedMultiplier,
+    kills,
+    lives,
+    gameOver,
+  );
 }

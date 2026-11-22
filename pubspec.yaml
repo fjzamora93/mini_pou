@@ -29,3 +29,5 @@ flutter:
   assets:
     - assets/images/pets_final/
     - assets/images/maps/jungle_camp.png
+    - assets/images/enemies/
+    - assets/images/skills/
